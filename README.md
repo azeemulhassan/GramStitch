@@ -9,15 +9,6 @@ pip install -r requirements.txt
 python app.py
 ```
 
-## Build an EXE
-
-```powershell
-pip install pyinstaller
-pyinstaller --onefile --windowed --name GramStitch app.py
-```
-
-The executable will be created at `dist\GramStitch.exe`.
-
 ## Current Features
 
 - Add a folder of images or pick individual image files.
