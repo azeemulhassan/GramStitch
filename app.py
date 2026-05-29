@@ -34,6 +34,7 @@ SUPPORTED_EXTENSIONS = {
 @dataclass(frozen=True)
 class StitchOptions:
     output_path: Path
+    orientation: str
     crop_top: int
     crop_bottom: int
     center_images: bool
@@ -49,6 +50,7 @@ class GramStitchApp:
 
         self.files: list[Path] = []
         self.status = StringVar(value="Add images or a folder to begin.")
+        self.orientation = StringVar(value="vertical")
         self.crop_top = IntVar(value=0)
         self.crop_bottom = IntVar(value=0)
         self.center_images = BooleanVar(value=True)
@@ -76,7 +78,7 @@ class GramStitchApp:
         list_frame.columnconfigure(0, weight=1)
         list_frame.rowconfigure(1, weight=1)
 
-        ttk.Label(list_frame, text="Images, top to bottom").grid(row=0, column=0, sticky="w")
+        ttk.Label(list_frame, text="Images, in stitch order").grid(row=0, column=0, sticky="w")
 
         self.listbox = Listbox(list_frame, selectmode="extended", activestyle="dotbox")
         self.listbox.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
@@ -102,19 +104,29 @@ class GramStitchApp:
         options.pack(fill="x", pady=(0, 10))
         options.columnconfigure(1, weight=1)
 
-        ttk.Label(options, text="Crop top").grid(row=0, column=0, sticky="w", pady=2)
-        ttk.Spinbox(options, from_=0, to=5000, textvariable=self.crop_top, width=8).grid(
-            row=0, column=1, sticky="ew", padx=(8, 0), pady=2
+        ttk.Label(options, text="Direction").grid(row=0, column=0, sticky="w", pady=2)
+        direction = ttk.Frame(options)
+        direction.grid(row=0, column=1, sticky="ew", padx=(8, 0), pady=2)
+        ttk.Radiobutton(direction, text="Vertical", value="vertical", variable=self.orientation).pack(
+            side="left"
         )
-        ttk.Label(options, text="Crop bottom").grid(row=1, column=0, sticky="w", pady=2)
-        ttk.Spinbox(options, from_=0, to=5000, textvariable=self.crop_bottom, width=8).grid(
+        ttk.Radiobutton(direction, text="Horizontal", value="horizontal", variable=self.orientation).pack(
+            side="left", padx=(8, 0)
+        )
+
+        ttk.Label(options, text="Crop top").grid(row=1, column=0, sticky="w", pady=2)
+        ttk.Spinbox(options, from_=0, to=5000, textvariable=self.crop_top, width=8).grid(
             row=1, column=1, sticky="ew", padx=(8, 0), pady=2
         )
-        ttk.Checkbutton(options, text="Center narrower images", variable=self.center_images).grid(
-            row=2, column=0, columnspan=2, sticky="w", pady=(8, 2)
+        ttk.Label(options, text="Crop bottom").grid(row=2, column=0, sticky="w", pady=2)
+        ttk.Spinbox(options, from_=0, to=5000, textvariable=self.crop_bottom, width=8).grid(
+            row=2, column=1, sticky="ew", padx=(8, 0), pady=2
+        )
+        ttk.Checkbutton(options, text="Center images on cross-axis", variable=self.center_images).grid(
+            row=3, column=0, columnspan=2, sticky="w", pady=(8, 2)
         )
         ttk.Checkbutton(options, text="White background", variable=self.white_background).grid(
-            row=3, column=0, columnspan=2, sticky="w", pady=2
+            row=4, column=0, columnspan=2, sticky="w", pady=2
         )
 
         self.stitch_button = self._button(controls, "Stitch to PNG", self.stitch)
@@ -223,6 +235,7 @@ class GramStitchApp:
         try:
             options = StitchOptions(
                 output_path=Path(output),
+                orientation=self.orientation.get(),
                 crop_top=max(0, int(self.crop_top.get())),
                 crop_bottom=max(0, int(self.crop_bottom.get())),
                 center_images=bool(self.center_images.get()),
@@ -307,23 +320,41 @@ def stitch_images(files: list[Path], options: StitchOptions) -> None:
         if not prepared:
             raise ValueError("No readable images were selected.")
 
-        output_width = max(image.width for image in prepared)
-        output_height = sum(image.height for image in prepared)
+        if options.orientation == "vertical":
+            output_width = max(image.width for image in prepared)
+            output_height = sum(image.height for image in prepared)
+        elif options.orientation == "horizontal":
+            output_width = sum(image.width for image in prepared)
+            output_height = max(image.height for image in prepared)
+        else:
+            raise ValueError(f"Unsupported stitch direction: {options.orientation}")
+
         has_alpha_output = any(image.mode == "RGBA" for image in prepared) and not options.white_background
         output_mode = "RGBA" if has_alpha_output else "RGB"
         background = (255, 255, 255, 0) if output_mode == "RGBA" else (255, 255, 255)
         result = Image.new(output_mode, (output_width, output_height), background)
 
+        x = 0
         y = 0
         for image in prepared:
-            x = (output_width - image.width) // 2 if options.center_images else 0
+            paste_x = x
+            paste_y = y
+            if options.orientation == "vertical" and options.center_images:
+                paste_x = (output_width - image.width) // 2
+            elif options.orientation == "horizontal" and options.center_images:
+                paste_y = (output_height - image.height) // 2
+
             paste_image = image
             if output_mode == "RGB" and image.mode == "RGBA":
                 flattened = Image.new("RGB", image.size, (255, 255, 255))
                 flattened.paste(image, mask=image.getchannel("A"))
                 paste_image = flattened
-            result.paste(paste_image, (x, y))
-            y += image.height
+
+            result.paste(paste_image, (paste_x, paste_y))
+            if options.orientation == "vertical":
+                y += image.height
+            else:
+                x += image.width
 
         options.output_path.parent.mkdir(parents=True, exist_ok=True)
         result.save(options.output_path, format="PNG", optimize=True)
