@@ -27,6 +27,13 @@ except ImportError:
     DND_FILES = None
     TkinterDnD = None
 
+try:
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+except ImportError:
+    pass
+
 
 SUPPORTED_EXTENSIONS = {
     ".png",
@@ -36,10 +43,12 @@ SUPPORTED_EXTENSIONS = {
     ".bmp",
     ".tif",
     ".tiff",
+    ".heic",
+    ".heif",
 }
 
 GITHUB_URL = "https://github.com/azeemulhassan/GramStitch"
-APP_VERSION = "0.2.1"
+APP_VERSION = "0.2.2"
 THEMES = {
     "dark": {
         "page": "#0f172a",
@@ -664,7 +673,7 @@ class GramStitchApp:
         filenames = filedialog.askopenfilenames(
             title="Choose images",
             filetypes=[
-                ("Images", "*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff"),
+                ("Images", "*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff *.heic *.heif"),
                 ("All files", "*.*"),
             ],
         )
@@ -741,7 +750,7 @@ class GramStitchApp:
             title="Save stitched image",
             defaultextension=".png",
             filetypes=[("PNG image", "*.png")],
-            initialfile="stitched.png",
+            initialfile=self._suggest_output_name(),
         )
         if not output:
             return
@@ -768,6 +777,11 @@ class GramStitchApp:
         self._set_busy(True)
         worker = threading.Thread(target=self._stitch_worker, args=(self.files.copy(), options), daemon=True)
         worker.start()
+
+    def _suggest_output_name(self) -> str:
+        if not self.files:
+            return "stitched.png"
+        return f"{self.files[0].path.stem}-stitched.png"
 
     def _stitch_worker(self, files: list[ImageItem], options: StitchOptions) -> None:
         try:

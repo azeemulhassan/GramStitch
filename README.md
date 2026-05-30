@@ -18,6 +18,7 @@ python app.py
 ## Current Features
 
 - Add a folder, pick individual image files, or drag images and folders in from Explorer.
+- Import common image formats including HEIC and HEIF photos.
 - Reorder rendered image blocks by dragging them or using move up/down.
 - Sort images by filename.
 - Stitch vertically or horizontally into a PNG.
