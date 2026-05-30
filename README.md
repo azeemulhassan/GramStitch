@@ -11,9 +11,14 @@ python app.py
 
 ## Current Features
 
-- Add a folder of images or pick individual image files.
-- Reorder images manually with move up/down.
+- Add a folder, pick individual image files, or drag images and folders in from Explorer.
+- Reorder rendered image blocks by dragging them or using move up/down.
 - Sort images by filename.
 - Stitch vertically or horizontally into a PNG.
-- Optional top/bottom crop for repeated browser or Instagram UI areas.
+- Preview the final stitched result before export.
+- Apply top/bottom crops to individual image slices.
+- Optionally remove exact repeated overlaps between adjacent images.
+- Save and reopen project files.
+- Undo and redo edits.
+- Zoom and navigate long previews with the mouse wheel.
 - Optional centering for images that do not all share the same width or height.
