@@ -28,9 +28,3 @@ python app.py
 - Undo and redo edits.
 - Zoom and navigate long previews with the mouse wheel.
 - Optional centering for images that do not all share the same width or height.
-
-## License
-
-Copyright (c) 2026 Azeem Ul Hassan. All rights reserved.
-
-The source is publicly viewable for educational and evaluation purposes. Redistribution, modification, commercial use, and publication of derivative works require prior written permission. See [LICENSE](LICENSE).
