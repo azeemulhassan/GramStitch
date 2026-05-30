@@ -2,6 +2,12 @@
 
 GramStitch is a lightweight Windows-friendly Python GUI for combining separate Instagram scroll screenshots or ripped image slices into one long lossless PNG. It lets users add images, arrange their order, crop repeated top/bottom UI areas, and stitch everything vertically or horizontally into a clean continuous image.
 
+## Windows Download
+
+Download the latest standalone Windows app: [GramStitch.exe](https://github.com/azeemulhassan/GramStitch/releases/latest/download/GramStitch.exe)
+
+No Python installation is required. See the [latest release](https://github.com/azeemulhassan/GramStitch/releases/latest) for release details.
+
 ## Run
 
 ```powershell
