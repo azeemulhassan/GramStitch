@@ -124,8 +124,14 @@ class GramStitchApp:
         self.hover_index: int | None = None
         self.drag_index: int | None = None
         self.drag_target_index: int | None = None
+        self.drag_canvas_x = 0
+        self.drag_canvas_y = 0
+        self.drag_ghost_x = 0
+        self.drag_ghost_y = 0
         self.thumbnail_images: list[ImageTk.PhotoImage] = []
+        self.thumbnail_cache: dict[tuple[str, int, int, str], ImageTk.PhotoImage] = {}
         self.final_preview_image: ImageTk.PhotoImage | None = None
+        self.resize_refresh_job: str | None = None
         self.undo_stack: list[list[ImageItem]] = []
         self.redo_stack: list[list[ImageItem]] = []
         self.preview_origin_x = 18
@@ -210,7 +216,7 @@ class GramStitchApp:
         self.canvas.bind("<Motion>", self._on_canvas_motion)
         self.canvas.bind("<Leave>", self._on_canvas_leave)
         self.canvas.bind("<MouseWheel>", self._on_canvas_wheel)
-        self.canvas.bind("<Configure>", lambda _event: self._refresh_preview())
+        self.canvas.bind("<Configure>", self._on_canvas_resize)
 
         controls = ttk.Frame(content, padding=(12, 0, 0, 0), style="App.TFrame")
         controls.grid(row=0, column=1, sticky="ns")
@@ -424,6 +430,7 @@ class GramStitchApp:
     def _on_theme_change(self) -> None:
         self._configure_style()
         self.canvas.configure(background=self.colors["panel"])
+        self.thumbnail_cache.clear()
         self._refresh_preview()
 
     def _button(self, parent: Frame, text: str, command, style: str = "TButton") -> ttk.Button:
@@ -563,6 +570,7 @@ class GramStitchApp:
         self._remember_state()
         item.crop_top = top
         item.crop_bottom = bottom
+        self.thumbnail_cache.clear()
         self._refresh_preview()
 
     def _load_selected_crop(self) -> None:
@@ -919,7 +927,7 @@ class GramStitchApp:
         dragging = index == self.drag_index
         colors = self.colors
         border = colors["card_selected"] if selected else colors["card_border"]
-        fill = colors["block_hover"] if hovered or dragging else colors["card"]
+        fill = colors["panel"] if dragging else colors["block_hover"] if hovered else colors["card"]
         tag = f"card:{index}"
 
         self.canvas.create_rectangle(
@@ -938,11 +946,22 @@ class GramStitchApp:
             y + height,
             fill=fill,
             outline=border,
-            width=3 if dragging else 2 if selected else 1,
+            width=2 if selected else 1,
             tags=(tag, "card"),
         )
         self._draw_block_connectors(index, x, y, width, height, fill, border, tag)
         self._draw_order_badge(index, x, y, tag)
+
+        if dragging:
+            self.canvas.create_text(
+                x + width // 2,
+                y + height // 2,
+                text="Moving",
+                fill=colors["muted"],
+                font=("Segoe UI", 10, "bold"),
+                tags=(tag, "card"),
+            )
+            return
 
         thumb = self._make_thumbnail(item)
         self.thumbnail_images.append(thumb)
@@ -987,6 +1006,85 @@ class GramStitchApp:
                 width=max(width - 154, 160),
                 tags=(tag, "card"),
             )
+
+    def _draw_drag_ghost(self) -> None:
+        if self.drag_index is None:
+            return
+
+        self.canvas.delete("drag-ghost")
+        item = self.files[self.drag_index]
+        colors = self.colors
+        compact = self.orientation.get() == "horizontal"
+        width = 180 if compact else min(max(self.canvas.winfo_width() - 72, 360), 520)
+        height = 190 if compact else 124
+        x = self.drag_canvas_x - width // 2
+        y = self.drag_canvas_y - height // 2 - 10
+        self.drag_ghost_x = x
+        self.drag_ghost_y = y
+        tag = "drag-ghost"
+
+        self.canvas.create_rectangle(
+            x + 10,
+            y + 12,
+            x + width + 10,
+            y + height + 12,
+            fill=colors["block_shadow"],
+            outline="",
+            tags=(tag,),
+        )
+        self.canvas.create_rectangle(
+            x,
+            y,
+            x + width,
+            y + height,
+            fill=colors["block_hover"],
+            outline=colors["card_selected"],
+            width=3,
+            tags=(tag,),
+        )
+
+        thumb = self._make_thumbnail(item)
+        self.thumbnail_images.append(thumb)
+        if compact:
+            thumb_x = x + (width - THUMBNAIL_SIZE[0]) // 2
+            thumb_y = y + 22
+            self.canvas.create_image(thumb_x, thumb_y, image=thumb, anchor="nw", tags=(tag,))
+            self.canvas.create_text(
+                x + 14,
+                thumb_y + THUMBNAIL_SIZE[1] + 16,
+                text=item.path.name,
+                fill=colors["text"],
+                font=("Segoe UI", 9, "bold"),
+                anchor="nw",
+                width=width - 28,
+                tags=(tag,),
+            )
+        else:
+            self.canvas.create_image(x + 14, y + 14, image=thumb, anchor="nw", tags=(tag,))
+            self.canvas.create_text(
+                x + 128,
+                y + 34,
+                text=item.path.name,
+                fill=colors["text"],
+                font=("Segoe UI", 11, "bold"),
+                anchor="nw",
+                width=width - 150,
+                tags=(tag,),
+            )
+
+        self.canvas.tag_raise(tag)
+
+    def _move_drag_ghost(self) -> None:
+        if self.drag_index is None or not self.canvas.find_withtag("drag-ghost"):
+            return
+        compact = self.orientation.get() == "horizontal"
+        width = 180 if compact else min(max(self.canvas.winfo_width() - 72, 360), 520)
+        height = 190 if compact else 124
+        x = self.drag_canvas_x - width // 2
+        y = self.drag_canvas_y - height // 2 - 10
+        self.canvas.move("drag-ghost", x - self.drag_ghost_x, y - self.drag_ghost_y)
+        self.drag_ghost_x = x
+        self.drag_ghost_y = y
 
     def _draw_block_connectors(
         self,
@@ -1068,6 +1166,11 @@ class GramStitchApp:
         )
 
     def _make_thumbnail(self, item: ImageItem) -> ImageTk.PhotoImage:
+        key = (str(item.path.resolve()), item.crop_top, item.crop_bottom, self.theme_name.get())
+        cached = self.thumbnail_cache.get(key)
+        if cached is not None:
+            return cached
+
         try:
             with Image.open(item.path) as image:
                 image = crop_image(image, item)
@@ -1079,7 +1182,9 @@ class GramStitchApp:
         except Exception:
             thumbnail = Image.new("RGBA", THUMBNAIL_SIZE, self._hex_to_rgba(self.colors["card_border"]))
 
-        return ImageTk.PhotoImage(thumbnail)
+        rendered = ImageTk.PhotoImage(thumbnail)
+        self.thumbnail_cache[key] = rendered
+        return rendered
 
     def _hex_to_rgba(self, color: str, alpha: int = 255) -> tuple[int, int, int, int]:
         value = color.lstrip("#")
@@ -1093,8 +1198,12 @@ class GramStitchApp:
         self.selected_index = index
         self.drag_index = index
         self.drag_target_index = index
+        self.drag_canvas_x = self.canvas.canvasx(event.x)
+        self.drag_canvas_y = self.canvas.canvasy(event.y)
         self._load_selected_crop()
         self._refresh_preview()
+        self._draw_insertion_marker(self.drag_target_index)
+        self._draw_drag_ghost()
 
     def _on_canvas_motion(self, event) -> None:
         if self.drag_index is not None:
@@ -1123,14 +1232,30 @@ class GramStitchApp:
         else:
             self.canvas.yview_scroll(steps, "units")
 
+    def _on_canvas_resize(self, _event) -> None:
+        if self.resize_refresh_job is not None:
+            self.root.after_cancel(self.resize_refresh_job)
+        self.resize_refresh_job = self.root.after(90, self._finish_resize_refresh)
+
+    def _finish_resize_refresh(self) -> None:
+        self.resize_refresh_job = None
+        self._refresh_preview()
+
     def _on_canvas_drag(self, event) -> None:
         if self.drag_index is None:
             return
 
         self.canvas.configure(cursor="fleur")
-        self.drag_target_index = self._target_index_for_event(event)
-        self._refresh_preview()
-        self._draw_insertion_marker(self.drag_target_index)
+        self.drag_canvas_x = self.canvas.canvasx(event.x)
+        self.drag_canvas_y = self.canvas.canvasy(event.y)
+        target = self._target_index_for_event(event)
+        if target != self.drag_target_index:
+            self.drag_target_index = target
+            self._refresh_preview()
+            self._draw_insertion_marker(self.drag_target_index)
+            self._draw_drag_ghost()
+        else:
+            self._move_drag_ghost()
 
     def _on_canvas_release(self, event) -> None:
         if self.drag_index is None:
@@ -1140,6 +1265,7 @@ class GramStitchApp:
         source = self.drag_index
         self.drag_index = None
         self.drag_target_index = None
+        self.canvas.delete("drag-ghost")
         self.canvas.configure(cursor="hand2")
 
         if target != source:
@@ -1188,6 +1314,7 @@ class GramStitchApp:
         return max(0, min(index, len(self.files)))
 
     def _draw_insertion_marker(self, index: int | None) -> None:
+        self.canvas.delete("marker")
         if index is None:
             return
 
