@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import threading
 import webbrowser
 from dataclasses import dataclass
@@ -38,7 +39,7 @@ SUPPORTED_EXTENSIONS = {
 }
 
 GITHUB_URL = "https://github.com/azeemulhassan/GramStitch"
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.2.1"
 THEMES = {
     "dark": {
         "page": "#0f172a",
@@ -82,6 +83,11 @@ THEMES = {
 THUMBNAIL_SIZE = (96, 96)
 
 
+def resource_path(filename: str) -> Path:
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    return base / filename
+
+
 @dataclass(frozen=True)
 class StitchOptions:
     output_path: Path
@@ -103,6 +109,7 @@ class GramStitchApp:
     def __init__(self, root: Tk) -> None:
         self.root = root
         self.root.title(f"GramStitch {APP_VERSION}")
+        self._set_window_icon()
         self.root.geometry("820x560")
         self.root.minsize(720, 480)
 
@@ -131,6 +138,7 @@ class GramStitchApp:
         self.thumbnail_images: list[ImageTk.PhotoImage] = []
         self.thumbnail_cache: dict[tuple[str, int, int, str], ImageTk.PhotoImage] = {}
         self.final_preview_image: ImageTk.PhotoImage | None = None
+        self.logo_image: ImageTk.PhotoImage | None = None
         self.resize_refresh_job: str | None = None
         self.undo_stack: list[list[ImageItem]] = []
         self.redo_stack: list[list[ImageItem]] = []
@@ -146,6 +154,12 @@ class GramStitchApp:
     def colors(self) -> dict[str, str]:
         return THEMES[self.theme_name.get()]
 
+    def _set_window_icon(self) -> None:
+        try:
+            self.root.iconbitmap(default=str(resource_path("icon.ico")))
+        except Exception:
+            return
+
     def _build_ui(self) -> None:
         self._configure_style()
 
@@ -156,16 +170,22 @@ class GramStitchApp:
 
         header = ttk.Frame(main, style="App.TFrame")
         header.grid(row=0, column=0, sticky="ew")
-        header.columnconfigure(0, weight=1)
+        header.columnconfigure(1, weight=1)
+
+        self.logo_image = self._load_logo()
+        if self.logo_image is not None:
+            ttk.Label(header, image=self.logo_image, style="Logo.TLabel").grid(
+                row=0, column=0, rowspan=2, sticky="w", padx=(0, 10)
+            )
 
         title = ttk.Label(header, text="GramStitch", style="Title.TLabel")
-        title.grid(row=0, column=0, sticky="w")
+        title.grid(row=0, column=1, sticky="w")
         subtitle = ttk.Label(
             header,
             text="Arrange image slices visually, then export one clean PNG.",
             style="Muted.TLabel",
         )
-        subtitle.grid(row=1, column=0, sticky="w", pady=(2, 0))
+        subtitle.grid(row=1, column=1, sticky="w", pady=(2, 0))
         ttk.Checkbutton(
             header,
             text="Dark",
@@ -173,7 +193,7 @@ class GramStitchApp:
             onvalue="dark",
             offvalue="light",
             command=self._on_theme_change,
-        ).grid(row=0, column=1, rowspan=2, sticky="e")
+        ).grid(row=0, column=2, rowspan=2, sticky="e")
 
         content = ttk.Frame(main, style="App.TFrame")
         content.grid(row=1, column=0, sticky="nsew", pady=(16, 10))
@@ -342,6 +362,7 @@ class GramStitchApp:
         self.root.configure(background=colors["page"])
         style.configure("App.TFrame", background=colors["page"])
         style.configure("Panel.TFrame", background=colors["panel"])
+        style.configure("Logo.TLabel", background=colors["page"])
         style.configure("TLabel", background=colors["page"], foreground=colors["text"], font=("Segoe UI", 10))
         style.configure(
             "Title.TLabel",
@@ -432,6 +453,14 @@ class GramStitchApp:
         self.canvas.configure(background=self.colors["panel"])
         self.thumbnail_cache.clear()
         self._refresh_preview()
+
+    def _load_logo(self) -> ImageTk.PhotoImage | None:
+        try:
+            with Image.open(resource_path("logo.png")) as image:
+                image = ImageOps.contain(image.convert("RGBA"), (48, 48))
+                return ImageTk.PhotoImage(image)
+        except OSError:
+            return None
 
     def _button(self, parent: Frame, text: str, command, style: str = "TButton") -> ttk.Button:
         return ttk.Button(parent, text=text, command=command, style=style)
